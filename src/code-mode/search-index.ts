@@ -18,7 +18,7 @@ const CATALOG: SearchIndexEntry[] = [
   { name: 'searchComputers',    signature: '(query: string, limit?: number) => Promise<Computer[]>',  description: 'Search computers by name, serial number, or other attributes',             category: 'computers',  capabilities: ['read:computers'],    readOnly: true },
   { name: 'getComputerDetails', signature: '(id: string) => Promise<any>',                            description: 'Get full details for a single computer by Jamf ID or serial number',      category: 'computers',  capabilities: ['read:computers'],    readOnly: true },
   { name: 'getAllComputers',    signature: '(limit?: number) => Promise<any[]>',                       description: 'List all computers (paginated). Default limit applies.',                  category: 'computers',  capabilities: ['read:computers'],    readOnly: true },
-  { name: 'updateInventory',    signature: '(deviceId: string) => Promise<void>',                      description: 'Force an inventory update on a computer (sends BlankPush + UpdateInventory)', category: 'computers', capabilities: ['command:computers'], readOnly: false },
+  { name: 'updateInventory',    signature: '(deviceId: string) => Promise<void>',                      description: 'Request a computer inventory refresh via MDM DEVICE_INFORMATION (not a full recon)', category: 'computers', capabilities: ['command:computers'], readOnly: false },
 
   // ── Policies ─────────────────────────────────────────────────────
   { name: 'listPolicies',      signature: '(limit?: number) => Promise<any[]>',                                              description: 'List all policies',                                          category: 'policies',  capabilities: ['read:policies'],    readOnly: true },
@@ -30,7 +30,7 @@ const CATALOG: SearchIndexEntry[] = [
   { name: 'setPolicyEnabled',  signature: '(policyId: string, enabled: boolean) => Promise<any>',                             description: 'Enable or disable a policy',                                 category: 'policies',  capabilities: ['write:policies'],   readOnly: false },
   { name: 'updatePolicyScope', signature: '(policyId: string, scopeUpdates: PolicyScopeUpdates) => Promise<any>',             description: 'Update the scope (target computers/groups) of a policy',     category: 'policies',  capabilities: ['write:policies'],   readOnly: false },
   { name: 'deletePolicy',      signature: '(policyId: string) => Promise<void>',                                              description: 'Delete a policy',                                            category: 'policies',  capabilities: ['write:policies'],   readOnly: false },
-  { name: 'executePolicy',     signature: '(policyId: string, deviceIds: string[]) => Promise<void>',                         description: 'Execute a policy on specific devices (sends MDM command)',    category: 'policies',  capabilities: ['command:policies'], readOnly: false },
+  { name: 'executePolicy',     signature: '(policyId: string, deviceIds: string[]) => Promise<void>',                         description: 'Not supported by Jamf API; always throws with the scoping/trigger alternative',    category: 'policies',  capabilities: ['command:policies'], readOnly: false },
 
   // ── Scripts ──────────────────────────────────────────────────────
   { name: 'listScripts',      signature: '(limit?: number) => Promise<any[]>',                                 description: 'List all scripts',                                   category: 'scripts',  capabilities: ['read:scripts'],    readOnly: true },
@@ -39,7 +39,7 @@ const CATALOG: SearchIndexEntry[] = [
   { name: 'createScript',     signature: '(scriptData: ScriptData) => Promise<any>',                            description: 'Create a new script',                                category: 'scripts',  capabilities: ['write:scripts'],   readOnly: false },
   { name: 'updateScript',     signature: '(scriptId: string, scriptData: ScriptUpdateData) => Promise<any>',    description: 'Update an existing script',                           category: 'scripts',  capabilities: ['write:scripts'],   readOnly: false },
   { name: 'deleteScript',     signature: '(scriptId: string) => Promise<void>',                                 description: 'Delete a script',                                    category: 'scripts',  capabilities: ['write:scripts'],   readOnly: false },
-  { name: 'deployScript',     signature: '(scriptId: string, deviceIds: string[]) => Promise<void>',            description: 'Deploy/run a script on specific devices',            category: 'scripts',  capabilities: ['command:scripts'], readOnly: false },
+  { name: 'deployScript',     signature: '(scriptId: string, deviceIds: string[]) => Promise<void>',            description: 'Not supported by Jamf API; always throws with the policy alternative',            category: 'scripts',  capabilities: ['command:scripts'], readOnly: false },
 
   // ── Configuration Profiles ───────────────────────────────────────
   { name: 'listConfigurationProfiles',      signature: '(type?: DeviceType) => Promise<any[]>',                                       description: 'List all configuration profiles (computer or mobile)',         category: 'profiles',  capabilities: ['read:profiles'],    readOnly: true },

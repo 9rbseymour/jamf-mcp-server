@@ -7,6 +7,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import { IJamfApiClient } from '../types/jamf-client.js';
+import { SUPPORTED_COMPUTER_MDM_COMMANDS, SUPPORTED_MOBILE_MDM_COMMANDS } from '../jamf-client-hybrid.js';
 import {
   GetFleetOverviewSchema,
   GetDeviceFullProfileSchema,
@@ -436,7 +437,7 @@ const GetComputerMDMCommandHistorySchema = z.object({
 // Computer MDM Commands Schema
 const SendComputerMDMCommandSchema = z.object({
   deviceId: z.string().describe('The Jamf computer ID (or management ID) to send the command to'),
-  command: z.string().describe('The MDM command to send: DeviceLock, EraseDevice, RestartDevice, ShutDownDevice, EnableRemoteDesktop, DisableRemoteDesktop, SetRecoveryLock, UpdateInventory, UnmanageDevice'),
+  command: z.string().describe(`The MDM command to send: ${SUPPORTED_COMPUTER_MDM_COMMANDS.join(', ')}`),
   confirm: z.boolean().optional().default(false).describe('Confirmation flag required for destructive commands (EraseDevice, DeviceLock, UnmanageDevice)'),
 });
 
@@ -774,7 +775,7 @@ export function registerTools(server: Server, jamfClient: IJamfApiClient): void 
       },
       {
         name: 'updateInventory',
-        description: 'Force an inventory update on a specific device. This sends an MDM command to the device.',
+        description: 'Request an inventory refresh on a computer by sending the MDM DEVICE_INFORMATION command. This updates MDM-collected data only; it does not run a full jamf recon.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -894,7 +895,7 @@ export function registerTools(server: Server, jamfClient: IJamfApiClient): void 
       },
       {
         name: 'executePolicy',
-        description: 'Execute a Jamf policy on one or more devices. DESTRUCTIVE: requires confirm=true. Use getPolicyDetails first to verify the policy configuration.',
+        description: 'Not supported: Jamf Pro has no API to run a policy on demand, so this always returns an error explaining the alternative (scope the policy and use a check-in or custom trigger).',
         inputSchema: {
           type: 'object',
           properties: {
@@ -921,7 +922,7 @@ export function registerTools(server: Server, jamfClient: IJamfApiClient): void 
       },
       {
         name: 'deployScript',
-        description: 'Deploy and execute a Jamf script on one or more devices. DESTRUCTIVE: requires confirm=true.',
+        description: 'Not supported: Jamf Pro has no API to run a script on demand, so this always returns an error explaining the alternative (add the script to a scoped policy).',
         inputSchema: {
           type: 'object',
           properties: {
@@ -1465,28 +1466,7 @@ export function registerTools(server: Server, jamfClient: IJamfApiClient): void 
             command: {
               type: 'string',
               description: 'The MDM command to send',
-              enum: [
-                'DeviceLock',
-                'EraseDevice',
-                'ClearPasscode',
-                'RestartDevice',
-                'ShutDownDevice',
-                'EnableLostMode',
-                'DisableLostMode',
-                'PlayLostModeSound',
-                'UpdateInventory',
-                'ClearRestrictionsPassword',
-                'SettingsEnableBluetooth',
-                'SettingsDisableBluetooth',
-                'SettingsEnableWiFi',
-                'SettingsDisableWiFi',
-                'SettingsEnableDataRoaming',
-                'SettingsDisableDataRoaming',
-                'SettingsEnableVoiceRoaming',
-                'SettingsDisableVoiceRoaming',
-                'SettingsEnablePersonalHotspot',
-                'SettingsDisablePersonalHotspot',
-              ],
+              enum: SUPPORTED_MOBILE_MDM_COMMANDS,
             },
             confirm: {
               type: 'boolean',
@@ -2202,7 +2182,7 @@ export function registerTools(server: Server, jamfClient: IJamfApiClient): void 
             },
             command: {
               type: 'string',
-              description: 'MDM command: DeviceLock, EraseDevice, RestartDevice, ShutDownDevice, EnableRemoteDesktop, DisableRemoteDesktop, SetRecoveryLock, UpdateInventory, UnmanageDevice',
+              description: `MDM command: ${SUPPORTED_COMPUTER_MDM_COMMANDS.join(', ')}. UpdateInventory sends DEVICE_INFORMATION (MDM data only, not a full recon).`,
             },
             confirm: {
               type: 'boolean',

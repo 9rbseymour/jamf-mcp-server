@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { createLogger } from './server/logger.js';
 import { getDefaultAgentPool } from './utils/http-agent-pool.js';
 import { JamfComputer } from './types/jamf-api.js';
-import { isAxiosError, getErrorMessage, getAxiosErrorStatus, getAxiosErrorData } from './utils/type-guards.js';
+import { isAxiosError, getErrorMessage, getAxiosErrorStatus } from './utils/type-guards.js';
 import { JamfAPIError } from './utils/errors.js';
 import { LRUCache } from './utils/lru-cache.js';
 import { xmlDocument, escapeXml } from './utils/xml-builder.js';
@@ -14,6 +14,51 @@ import { IJamfApiClient } from './types/jamf-client.js';
 const logger = createLogger('jamf-client-hybrid');
 const agentPool = getDefaultAgentPool();
 const apiThrottle = new ConcurrencyLimiter();
+
+const MDM_COMMANDS_PATH = '/api/v2/mdm/commands';
+const MANAGEMENT_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+type MdmCommandData = { commandType: string } & Record<string, unknown>;
+
+// Tool-facing command names mapped to documented POST /v2/mdm/commands payloads.
+// Computers have no inventory-update MDM command; DEVICE_INFORMATION refreshes the
+// MDM-collected fields (it does not run a full `jamf recon`).
+const COMPUTER_MDM_COMMANDS: Record<string, MdmCommandData> = {
+  DeviceLock: { commandType: 'DEVICE_LOCK' },
+  EraseDevice: { commandType: 'ERASE_DEVICE' },
+  RestartDevice: { commandType: 'RESTART_DEVICE' },
+  ShutDownDevice: { commandType: 'SHUT_DOWN_DEVICE' },
+  EnableRemoteDesktop: { commandType: 'ENABLE_REMOTE_DESKTOP' },
+  DisableRemoteDesktop: { commandType: 'DISABLE_REMOTE_DESKTOP' },
+  SetRecoveryLock: { commandType: 'SET_RECOVERY_LOCK' },
+  UpdateInventory: { commandType: 'DEVICE_INFORMATION' },
+};
+
+const MOBILE_MDM_COMMANDS: Record<string, MdmCommandData> = {
+  DeviceLock: { commandType: 'DEVICE_LOCK' },
+  EraseDevice: { commandType: 'ERASE_DEVICE' },
+  RestartDevice: { commandType: 'RESTART_DEVICE' },
+  ShutDownDevice: { commandType: 'SHUT_DOWN_DEVICE' },
+  EnableLostMode: { commandType: 'ENABLE_LOST_MODE' },
+  DisableLostMode: { commandType: 'DISABLE_LOST_MODE' },
+  PlayLostModeSound: { commandType: 'PLAY_LOST_MODE_SOUND' },
+  ClearRestrictionsPassword: { commandType: 'CLEAR_RESTRICTIONS_PASSWORD' },
+  SettingsEnableBluetooth: { commandType: 'SETTINGS', bluetooth: true },
+  SettingsDisableBluetooth: { commandType: 'SETTINGS', bluetooth: false },
+  SettingsEnableDataRoaming: { commandType: 'SETTINGS', dataRoaming: 'ENABLE_DATA_ROAMING' },
+  SettingsDisableDataRoaming: { commandType: 'SETTINGS', dataRoaming: 'DISABLE_DATA_ROAMING' },
+  SettingsEnableVoiceRoaming: { commandType: 'SETTINGS', voiceRoaming: 'ENABLE_VOICE_ROAMING' },
+  SettingsDisableVoiceRoaming: { commandType: 'SETTINGS', voiceRoaming: 'DISABLE_VOICE_ROAMING' },
+  SettingsEnablePersonalHotspot: { commandType: 'SETTINGS', personalHotspot: 'ENABLE_PERSONAL_HOTSPOT' },
+  SettingsDisablePersonalHotspot: { commandType: 'SETTINGS', personalHotspot: 'DISABLE_PERSONAL_HOTSPOT' },
+};
+
+// v2 CLEAR_PASSCODE needs the device's unlock token, which callers can't supply,
+// and v2 has no inventory command, so these stay on the Classic URL form.
+const MOBILE_CLASSIC_COMMANDS = ['ClearPasscode', 'UpdateInventory'];
+
+export const SUPPORTED_MOBILE_MDM_COMMANDS = [...Object.keys(MOBILE_MDM_COMMANDS), ...MOBILE_CLASSIC_COMMANDS];
+export const SUPPORTED_COMPUTER_MDM_COMMANDS = [...Object.keys(COMPUTER_MDM_COMMANDS), 'UnmanageDevice'];
 
 export interface JamfApiClientConfig {
   baseUrl: string;
@@ -664,42 +709,28 @@ export class JamfApiClientHybrid implements IJamfApiClient {
     }
   }
 
-  // Execute policy (if not in read-only mode)
-  async executePolicy(policyId: string, deviceIds: string[]): Promise<void> {
-    this.invalidateCache('listPolicies');
-    this.invalidateCache('policyDetails');
-    for (const id of deviceIds) {
-      this.invalidateCache(`computerDetails:${id}`);
-    }
-    this.invalidateCache('searchComputers');
+  // Neither the Jamf Pro API nor the Classic API can run a policy or script on
+  // demand; policies run on the device at check-in or via a trigger. Fail loudly
+  // instead of calling an endpoint that doesn't exist.
+  async executePolicy(policyId: string, _deviceIds: string[]): Promise<void> {
     if (this.readOnlyMode) {
       throw new Error('Cannot execute policies in read-only mode');
     }
-    
-    await this.ensureAuthenticated();
-    
-    for (const deviceId of deviceIds) {
-      await this.axiosInstance.post(`/api/v1/policies/${policyId}/retry/${deviceId}`);
-    }
+    throw new Error(
+      `Jamf Pro has no API to run policy ${policyId} on demand. ` +
+      'Scope the policy to the devices (e.g. via a static computer group) with a recurring check-in or custom trigger, ' +
+      'then send a command such as UpdateInventory or wait for the next check-in.'
+    );
   }
 
-  // Deploy script (if not in read-only mode)
-  async deployScript(scriptId: string, deviceIds: string[]): Promise<void> {
-    for (const id of deviceIds) {
-      this.invalidateCache(`computerDetails:${id}`);
-    }
-    this.invalidateCache('searchComputers');
+  async deployScript(scriptId: string, _deviceIds: string[]): Promise<void> {
     if (this.readOnlyMode) {
       throw new Error('Cannot deploy scripts in read-only mode');
     }
-    
-    await this.ensureAuthenticated();
-    
-    for (const deviceId of deviceIds) {
-      await this.axiosInstance.post(`/api/v1/scripts/${scriptId}/run`, {
-        computerIds: [deviceId],
-      });
-    }
+    throw new Error(
+      `Jamf Pro has no API to run script ${scriptId} on demand. ` +
+      'Add the script to a policy scoped to the devices, then use a check-in or custom trigger to run it.'
+    );
   }
 
   // Update inventory (if not in read-only mode)
@@ -711,32 +742,10 @@ export class JamfApiClientHybrid implements IJamfApiClient {
     }
     
     await this.ensureAuthenticated();
-    
-    // Try Jamf Pro API first
-    try {
-      // Jamf Pro API uses management commands endpoint
-      await this.axiosInstance.post(`/api/v1/jamf-management-framework/redeploy/${deviceId}`);
-      logger.info(`Inventory update requested for device ${deviceId} via Jamf Pro API`);
-    } catch (error) {
-      if (getAxiosErrorStatus(error) === 404 || getAxiosErrorStatus(error) === 403) {
-        logger.debug('Jamf Pro API failed, trying Classic API computercommands...');
-        // Try Classic API using the correct endpoint
-        try {
-          await this.axiosInstance.post(`/JSSResource/computercommands/command/UpdateInventory`, {
-            computer_id: deviceId,
-          });
-          logger.info(`Inventory update requested for device ${deviceId} via Classic API`);
-        } catch (classicError) {
-          if (isAxiosError(classicError)) {
-            throw JamfAPIError.fromAxiosError(classicError, { operation: 'updateDeviceInventory', deviceId });
-          }
-          logger.error('Classic API computercommands failed:', { error: getErrorMessage(classicError) });
-          throw classicError;
-        }
-      } else {
-        throw error;
-      }
-    }
+
+    const managementId = await this.resolveComputerManagementId(deviceId);
+    await this.postMdmCommand(managementId, COMPUTER_MDM_COMMANDS.UpdateInventory, 'updateDeviceInventory');
+    logger.info(`Inventory update (DEVICE_INFORMATION) requested for computer ${deviceId}`);
   }
 
   // List policies (cached for 60s)
@@ -808,20 +817,8 @@ export class JamfApiClientHybrid implements IJamfApiClient {
     }
     
     await this.ensureAuthenticated();
-    
-    // Try Jamf Pro API first
-    try {
-      logger.info('Creating policy using Jamf Pro API...');
-      logger.info('Policy data:', JSON.stringify(policyData, null, 2));
-      const response = await this.axiosInstance.post('/api/v1/policies', policyData);
-      return response.data;
-    } catch (error) {
-      logger.debug(`Jamf Pro API failed with status ${getAxiosErrorStatus(error)}, trying Classic API...`);
-      logger.debug('Error details:', getAxiosErrorData(error));
-      // Fall back to Classic API for any error
-    }
-    
-    // Fall back to Classic API with XML format
+
+    // Policies exist only in the Classic API.
     try {
       logger.info('Creating policy using Classic API with XML...');
       
@@ -870,19 +867,8 @@ export class JamfApiClientHybrid implements IJamfApiClient {
     }
     
     await this.ensureAuthenticated();
-    
-    // Try Jamf Pro API first
-    try {
-      logger.info(`Updating policy ${policyId} using Jamf Pro API...`);
-      const response = await this.axiosInstance.put(`/api/v1/policies/${policyId}`, policyData);
-      return response.data;
-    } catch (error) {
-      logger.debug(`Jamf Pro API failed with status ${getAxiosErrorStatus(error)}, trying Classic API...`);
-      logger.debug('Error details:', getAxiosErrorData(error));
-      // Fall back to Classic API for any error
-    }
-    
-    // Fall back to Classic API with XML format
+
+    // Policies exist only in the Classic API.
     try {
       logger.info(`Updating policy ${policyId} using Classic API with XML...`);
       
@@ -1899,25 +1885,17 @@ export class JamfApiClientHybrid implements IJamfApiClient {
     
     await this.ensureAuthenticated();
     
+    // The Jamf Pro API deletes smart and static groups on separate endpoints; the
+    // Classic API handles both by ID, so use it rather than guessing the type.
     try {
-      // Try Jamf Pro API first
-      logger.info(`Deleting computer group ${groupId} using Jamf Pro API...`);
-      await this.axiosInstance.delete(`/api/v1/computer-groups/${groupId}`);
-      logger.info(`Successfully deleted computer group ${groupId}`);
-    } catch (_error) {
-      logger.debug('Jamf Pro API failed, trying Classic API...');
-      
-      // Fall back to Classic API
-      try {
-        await this.axiosInstance.delete(`/JSSResource/computergroups/id/${groupId}`);
-        logger.info(`Successfully deleted computer group ${groupId} via Classic API`);
-      } catch (classicError) {
-        if (isAxiosError(classicError)) {
-          throw JamfAPIError.fromAxiosError(classicError, { operation: 'deleteComputerGroup', groupId });
-        }
-        logger.error('Classic API also failed:', { error: getErrorMessage(classicError) });
-        throw classicError;
+      await this.axiosInstance.delete(`/JSSResource/computergroups/id/${groupId}`);
+      logger.info(`Successfully deleted computer group ${groupId} via Classic API`);
+    } catch (classicError) {
+      if (isAxiosError(classicError)) {
+        throw JamfAPIError.fromAxiosError(classicError, { operation: 'deleteComputerGroup', groupId });
       }
+      logger.error('Classic API failed:', { error: getErrorMessage(classicError) });
+      throw classicError;
     }
   }
 
@@ -2046,49 +2024,9 @@ export class JamfApiClientHybrid implements IJamfApiClient {
     }
     
     await this.ensureAuthenticated();
-    
-    // Try Jamf Pro API first
-    try {
-      logger.info(`Updating mobile device inventory for ${deviceId} using Jamf Pro API...`);
-      await this.axiosInstance.post(`/api/v2/mobile-devices/${deviceId}/update-inventory`);
-      logger.info(`Mobile device inventory update requested for device ${deviceId}`);
-    } catch (_error) {
-      logger.debug('Jamf Pro API failed, trying Classic API...');
-      
-      // Try Classic API using MDM commands
-      try {
-        // Classic API expects XML format for MDM commands
-        const xmlPayload = `<?xml version="1.0" encoding="UTF-8"?>
-<mobile_device_command>
-  <general>
-    <command>UpdateInventory</command>
-  </general>
-  <mobile_devices>
-    <mobile_device>
-      <id>${deviceId}</id>
-    </mobile_device>
-  </mobile_devices>
-</mobile_device_command>`;
-        
-        await this.axiosInstance.post(
-          `/JSSResource/mobiledevicecommands/command/UpdateInventory/id/${deviceId}`,
-          xmlPayload,
-          {
-            headers: {
-              'Content-Type': 'application/xml',
-              'Accept': 'application/xml',
-            }
-          }
-        );
-        logger.info(`Mobile device inventory update requested for device ${deviceId} via Classic API`);
-      } catch (classicError) {
-        if (isAxiosError(classicError)) {
-          throw JamfAPIError.fromAxiosError(classicError, { operation: 'updateMobileDeviceInventory', deviceId });
-        }
-        logger.error('Classic API also failed:', { error: getErrorMessage(classicError) });
-        throw classicError;
-      }
-    }
+
+    await this.postClassicMobileCommand(deviceId, 'UpdateInventory', 'updateMobileDeviceInventory');
+    logger.info(`Mobile device inventory update requested for device ${deviceId} via Classic API`);
   }
 
   /**
@@ -2101,70 +2039,18 @@ export class JamfApiClientHybrid implements IJamfApiClient {
     
     await this.ensureAuthenticated();
     
-    // Validate command
-    const validCommands = [
-      'DeviceLock',
-      'EraseDevice',
-      'ClearPasscode',
-      'RestartDevice',
-      'ShutDownDevice',
-      'EnableLostMode',
-      'DisableLostMode',
-      'PlayLostModeSound',
-      'UpdateInventory',
-      'ClearRestrictionsPassword',
-      'SettingsEnableBluetooth',
-      'SettingsDisableBluetooth',
-      'SettingsEnableWiFi',
-      'SettingsDisableWiFi',
-      'SettingsEnableDataRoaming',
-      'SettingsDisableDataRoaming',
-      'SettingsEnableVoiceRoaming',
-      'SettingsDisableVoiceRoaming',
-      'SettingsEnablePersonalHotspot',
-      'SettingsDisablePersonalHotspot'
-    ];
-    
-    if (!validCommands.includes(command)) {
-      throw new Error(`Invalid MDM command: ${command}. Valid commands are: ${validCommands.join(', ')}`);
+    if (!SUPPORTED_MOBILE_MDM_COMMANDS.includes(command)) {
+      throw new Error(`Invalid MDM command: ${command}. Valid commands are: ${SUPPORTED_MOBILE_MDM_COMMANDS.join(', ')}`);
     }
-    
-    // Try Jamf Pro API first
-    try {
-      logger.info(`Sending MDM command '${command}' to mobile device ${deviceId} using Jamf Pro API...`);
-      
-      // Jamf Pro API uses different endpoints for different commands
-      if (command === 'DeviceLock') {
-        await this.axiosInstance.post(`/api/v2/mobile-devices/${deviceId}/lock`);
-      } else if (command === 'EraseDevice') {
-        await this.axiosInstance.post(`/api/v2/mobile-devices/${deviceId}/erase`);
-      } else if (command === 'ClearPasscode') {
-        await this.axiosInstance.post(`/api/v2/mobile-devices/${deviceId}/clear-passcode`);
-      } else {
-        // Generic command endpoint
-        await this.axiosInstance.post(`/api/v2/mobile-devices/${deviceId}/commands`, {
-          commandType: command,
-        });
-      }
-      
-      logger.info(`Successfully sent MDM command '${command}' to device ${deviceId}`);
-    } catch (_error) {
-      logger.debug('Jamf Pro API failed, trying Classic API...');
-      
-      // Try Classic API
-      try {
-        await this.axiosInstance.post(`/JSSResource/mobiledevicecommands/command/${command}`, {
-          mobile_device_id: deviceId,
-        });
-        logger.info(`Successfully sent MDM command '${command}' to device ${deviceId} via Classic API`);
-      } catch (classicError) {
-        if (isAxiosError(classicError)) {
-          throw JamfAPIError.fromAxiosError(classicError, { operation: 'sendMDMCommand', deviceId, command });
-        }
-        logger.error('Classic API also failed:', { error: getErrorMessage(classicError) });
-        throw classicError;
-      }
+
+    if (MOBILE_CLASSIC_COMMANDS.includes(command)) {
+      await this.postClassicMobileCommand(deviceId, command, 'sendMDMCommand');
+    } else {
+      const details = await this.getMobileDeviceDetails(deviceId);
+      const managementId = this.requireManagementId(details?.managementId, 'mobile device', deviceId);
+      await this.postMdmCommand(managementId, MOBILE_MDM_COMMANDS[command], 'sendMDMCommand');
     }
+    logger.info(`Successfully sent MDM command '${command}' to mobile device ${deviceId}`);
   }
 
   /**
@@ -3680,61 +3566,72 @@ export class JamfApiClientHybrid implements IJamfApiClient {
 
     await this.ensureAuthenticated();
 
-    const validCommands = [
-      'DeviceLock',
-      'EraseDevice',
-      'RestartDevice',
-      'ShutDownDevice',
-      'EnableRemoteDesktop',
-      'DisableRemoteDesktop',
-      'SetRecoveryLock',
-      'UpdateInventory',
-      'UnmanageDevice',
-    ];
-
-    if (!validCommands.includes(command)) {
-      throw new Error(`Invalid computer MDM command: ${command}. Valid commands are: ${validCommands.join(', ')}`);
+    if (!SUPPORTED_COMPUTER_MDM_COMMANDS.includes(command)) {
+      throw new Error(
+        `Invalid computer MDM command: ${command}. Valid commands are: ${SUPPORTED_COMPUTER_MDM_COMMANDS.join(', ')}`
+      );
     }
 
-    try {
-      logger.info(`Sending MDM command '${command}' to computer ${deviceId} using Jamf Pro API...`);
-      const response = await this.axiosInstance.post('/api/v1/mdm/commands', {
-        clientData: [
-          {
-            managementId: deviceId,
-            clientType: 'COMPUTER',
-          },
-        ],
-        commandData: {
-          commandType: command,
-        },
-      });
-      logger.info(`Successfully sent MDM command '${command}' to computer ${deviceId}`);
-      return response.data;
-    } catch (_error) {
-      logger.debug('Jamf Pro API failed for computer MDM command, trying Classic API...');
-
+    if (command === 'UnmanageDevice') {
+      // v2 MDM commands have no unmanage type; Jamf's replacement is remove-mdm-profile.
       try {
-        const xmlPayload = `<?xml version="1.0" encoding="UTF-8"?><computer_command><general><command>${escapeXml(command)}</command></general><computers><computer><id>${escapeXml(deviceId)}</id></computer></computers></computer_command>`;
-        const response = await this.axiosInstance.post(
-          '/JSSResource/computercommands/command/' + command,
-          xmlPayload,
-          {
-            headers: {
-              'Content-Type': 'application/xml',
-              'Accept': 'application/json',
-            },
-          },
-        );
-        logger.info(`Successfully sent MDM command '${command}' to computer ${deviceId} via Classic API`);
+        const response = await this.axiosInstance.post(`/api/v4/computers-inventory/${deviceId}/remove-mdm-profile`);
         return response.data;
-      } catch (classicError) {
-        if (isAxiosError(classicError)) {
-          throw JamfAPIError.fromAxiosError(classicError, { operation: 'sendComputerMDMCommand', deviceId, command });
+      } catch (error) {
+        if (isAxiosError(error)) {
+          throw JamfAPIError.fromAxiosError(error, { operation: 'sendComputerMDMCommand', deviceId, command });
         }
-        logger.error('Classic API also failed for computer MDM command:', { error: getErrorMessage(classicError) });
-        throw classicError;
+        throw error;
       }
+    }
+
+    const managementId = await this.resolveComputerManagementId(deviceId);
+    const data = await this.postMdmCommand(managementId, COMPUTER_MDM_COMMANDS[command], 'sendComputerMDMCommand');
+    logger.info(`Successfully sent MDM command '${command}' to computer ${deviceId}`);
+    return data;
+  }
+
+  // Accepts either a Jamf computer ID or a management ID (UUID), as the tool advertises.
+  private async resolveComputerManagementId(deviceId: string): Promise<string> {
+    if (MANAGEMENT_ID_PATTERN.test(deviceId)) {
+      return deviceId;
+    }
+    const details = await this.getComputerDetails(deviceId);
+    return this.requireManagementId(details?.general?.managementId, 'computer', deviceId);
+  }
+
+  private requireManagementId(managementId: unknown, deviceType: string, deviceId: string): string {
+    if (typeof managementId !== 'string' || managementId === '') {
+      throw new Error(
+        `Could not find a management ID for ${deviceType} ${deviceId}; MDM commands require the Jamf Pro API inventory record.`
+      );
+    }
+    return managementId;
+  }
+
+  private async postMdmCommand(managementId: string, commandData: MdmCommandData, operation: string): Promise<any> {
+    try {
+      const response = await this.axiosInstance.post(MDM_COMMANDS_PATH, {
+        clientData: [{ managementId }],
+        commandData,
+      });
+      return response.data;
+    } catch (error) {
+      if (isAxiosError(error)) {
+        throw JamfAPIError.fromAxiosError(error, { operation, managementId, commandType: commandData.commandType });
+      }
+      throw error;
+    }
+  }
+
+  private async postClassicMobileCommand(deviceId: string, command: string, operation: string): Promise<void> {
+    try {
+      await this.axiosInstance.post(`/JSSResource/mobiledevicecommands/command/${command}/id/${deviceId}`);
+    } catch (error) {
+      if (isAxiosError(error)) {
+        throw JamfAPIError.fromAxiosError(error, { operation, deviceId, command });
+      }
+      throw error;
     }
   }
 
