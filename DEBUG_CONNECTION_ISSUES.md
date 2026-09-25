@@ -120,10 +120,7 @@ After fixing any issues:
 # Rebuild the project
 npm run build
 
-# Restart the HTTP server
-npm run serve:http
-
-# Or for MCP mode
+# Restart the MCP server
 npm run serve
 ```
 

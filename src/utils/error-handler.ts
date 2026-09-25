@@ -4,22 +4,8 @@
 
 import { createLogger } from '../server/logger.js';
 import { JamfAPIError, NetworkError, AuthenticationError } from './errors.js';
-import { Request, Response, NextFunction } from 'express';
 
 const logger = createLogger('error-handler');
-
-/**
- * Standard error response format
- */
-export interface ErrorResponse {
-  error: {
-    code: string;
-    message: string;
-    details?: any;
-    timestamp: string;
-    requestId?: string;
-  };
-}
 
 /**
  * Convert any error to JamfAPIError
@@ -62,74 +48,6 @@ export function normalizeError(error: any, context?: Record<string, any>): JamfA
     ['An unexpected error occurred'],
     context
   );
-}
-
-/**
- * Express async handler wrapper
- */
-export function asyncHandler<T extends Request = Request>(
-  fn: (req: T, res: Response, next: NextFunction) => Promise<any>
-): (req: T, res: Response, next: NextFunction) => void {
-  return (req: T, res: Response, next: NextFunction) => {
-    Promise.resolve(fn(req, res, next)).catch((error) => {
-      const jamfError = normalizeError(error, {
-        method: req.method,
-        path: req.path,
-        ip: req.ip,
-      });
-
-      logger.error('Request failed', {
-        error: jamfError.toDetailedString(),
-        requestId: (req as any).id,
-      });
-
-      next(jamfError);
-    });
-  };
-}
-
-/**
- * Express error handling middleware
- */
-export function errorMiddleware(
-  error: Error,
-  req: Request,
-  res: Response,
-  _next: NextFunction
-): void {
-  const jamfError = normalizeError(error, {
-    method: req.method,
-    path: req.path,
-    ip: req.ip,
-  });
-
-  // Log error details
-  logger.error('Error middleware caught error', {
-    error: jamfError.toDetailedString(),
-    requestId: (req as any).id,
-    statusCode: jamfError.statusCode || 500,
-  });
-
-  // Send error response
-  const statusCode = jamfError.statusCode || 500;
-  const errorResponse: ErrorResponse = {
-    error: {
-      code: jamfError.errorCode || 'INTERNAL_ERROR',
-      message: jamfError.message,
-      timestamp: new Date().toISOString(),
-      requestId: (req as any).id,
-    },
-  };
-
-  // Include details in development mode
-  if (process.env.NODE_ENV === 'development') {
-    errorResponse.error.details = {
-      suggestions: jamfError.suggestions,
-      context: jamfError.context,
-    };
-  }
-
-  res.status(statusCode).json(errorResponse);
 }
 
 /**

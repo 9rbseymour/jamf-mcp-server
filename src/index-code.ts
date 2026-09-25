@@ -21,7 +21,6 @@ import { registerPrompts } from './prompts/index.js';
 import { setupGlobalErrorHandlers } from './utils/error-handler.js';
 import { createLogger } from './server/logger.js';
 import { registerShutdownHandler, registerCommonHandlers } from './utils/shutdown-manager.js';
-import { cleanupAuthMiddleware } from './server/auth-middleware.js';
 import { cleanupAgentPool } from './utils/http-agent-pool.js';
 
 const logger = createLogger('code-mode');
@@ -161,7 +160,6 @@ setupGlobalErrorHandlers();
 registerCommonHandlers();
 
 // Register cleanup handlers
-registerShutdownHandler('auth-cleanup', cleanupAuthMiddleware, 20);
 registerShutdownHandler('agent-pool-cleanup', cleanupAgentPool, 20);
 registerShutdownHandler('server-transport-close', async () => {
   logger.info('Closing server transport...');

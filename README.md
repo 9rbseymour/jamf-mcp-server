@@ -43,15 +43,6 @@ npm run build
 
 Configure your credentials in Claude Desktop (see [Configuration](#configuration) below).
 
-### For ChatGPT Users
-```bash
-git clone https://github.com/dbankscard/jamf-mcp-server.git
-cd jamf-mcp-server
-./chatgpt/start-chatgpt-poc.sh
-```
-
-See our [ChatGPT Quick Start Guide](chatgpt/QUICK_START.md) for 5-minute setup.
-
 ## Code Mode (New)
 
 Code Mode replaces 115 individual MCP tools with just 2:
@@ -398,10 +389,6 @@ Add to your Claude Desktop config file:
 }
 ```
 
-### ChatGPT Configuration
-
-See [ChatGPT Connector Setup](chatgpt/CHATGPT_CONNECTOR_README.md) for detailed instructions.
-
 ### Enhanced Mode (Optional)
 
 ```json
@@ -416,7 +403,7 @@ See [ChatGPT Connector Setup](chatgpt/CHATGPT_CONNECTOR_README.md) for detailed 
     "JAMF_ENABLE_RETRY": "true",
     "JAMF_ENABLE_RATE_LIMITING": "false",
     "JAMF_ENABLE_CIRCUIT_BREAKER": "false",
-    "JAMF_READ_ONLY": "false"
+    "JAMF_READ_ONLY": "true"
   }
 }
 ```
@@ -440,7 +427,7 @@ npm test             # Run tests
 
 ## Security
 
-- **Read-Only Mode**: Set `JAMF_READ_ONLY=true` to prevent any modifications
+- **Read-Only by Default**: All write operations are blocked unless `JAMF_READ_ONLY=false` is set explicitly
 - **Confirmation Required**: All destructive operations require explicit `confirm: true`
 - **Tool Annotations**: Each tool declares `readOnlyHint` and `destructiveHint` for client-side safety
 - **Client Credentials Authentication**: Supports Jamf Pro API roles and clients
@@ -453,7 +440,7 @@ npm test             # Run tests
 
 For full functionality:
 - Read access to computers, policies, scripts, configuration profiles, packages, mobile devices, buildings, departments, categories, Extension Attributes, Patch Management, PreStage Enrollments, network segments, accounts, users, webhooks
-- LAPS password access (for LAPS tools)
+- LAPS password access (for LAPS tools; retrieving passwords also requires `JAMF_READ_ONLY=false`)
 - Update access for inventory updates, policies, scripts, extension attributes
 - Execute access for policies, scripts, and MDM commands
 
@@ -468,7 +455,6 @@ Claude Desktop ──>  │  MCP Server (stdio)          │──>  Jamf Pro AP
                     ├─ Code Mode (2 tools) ────────┤
                     │  jamf_search + jamf_execute   │──>  (sandboxed VM)  ──>  Jamf Pro API
                     └──────────────────────────────┘
-ChatGPT ──>  Tunnel (Cloudflare) ──>  MCP Server (HTTP)  ──>  Jamf Pro API
 ```
 
 The server uses a hybrid API client that supports both the Jamf Pro API and Classic API, with automatic fallback between them for maximum compatibility across Jamf Pro versions. All API calls pass through a concurrency limiter to prevent rate-limit errors.

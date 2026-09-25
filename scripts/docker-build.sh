@@ -71,6 +71,5 @@ echo -e "Size: $(docker images --format 'table {{.Size}}' "${IMAGE_NAME}:${VERSI
 
 # Display next steps
 echo -e "\n${GREEN}Next steps:${NC}"
-echo -e "1. Test locally: ${YELLOW}docker-compose up${NC}"
+echo -e "1. Test locally (stdio): ${YELLOW}docker run -i --rm --env-file .env ${IMAGE_NAME}:${VERSION}${NC}"
 echo -e "2. Push to registry: ${YELLOW}PUSH_TO_REGISTRY=true ./scripts/docker-build.sh${NC}"
-echo -e "3. Deploy to production: ${YELLOW}docker-compose -f docker-compose.yml up -d${NC}"
