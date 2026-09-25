@@ -12,6 +12,7 @@
     "build:quick": "tsc",
     "build": "npm run test:skills && tsc && chmod +x dist/index-main.js dist/index.js dist/index-enhanced.js dist/index-code.js",
     "build:force": "tsc && chmod +x dist/index-main.js dist/index.js dist/index-enhanced.js dist/index-code.js",
+    "prepare": "npm run build:force",
     "dev": "tsx src/index-main.ts",
     "dev:enhanced": "JAMF_USE_ENHANCED_MODE=true tsx src/index-main.ts",
     "dev:code": "JAMF_CODE_MODE=true tsx src/index-main.ts",
