@@ -7,6 +7,7 @@ import { BedrockProvider } from './ai/providers/BedrockProvider.js';
 import { OpenAIProvider } from './ai/providers/OpenAIProvider.js';
 import { MockProvider } from './ai/providers/MockProvider.js';
 import { SimpleAgent } from './core/SimpleAgent.js';
+import { isReadOnlyMode } from '../utils/read-only.js';
 
 async function main() {
   console.log('🤖 Jamf AI Agent - Simple Natural Language Interface\n');
@@ -28,7 +29,7 @@ async function main() {
       JAMF_CLIENT_SECRET: process.env.JAMF_CLIENT_SECRET,
       JAMF_USERNAME: process.env.JAMF_USERNAME || '',
       JAMF_PASSWORD: process.env.JAMF_PASSWORD || '',
-      JAMF_READ_ONLY: process.env.JAMF_READ_ONLY || 'false',
+      JAMF_READ_ONLY: String(isReadOnlyMode()),
     },
   });
 

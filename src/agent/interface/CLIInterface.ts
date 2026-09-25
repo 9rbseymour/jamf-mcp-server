@@ -3,6 +3,7 @@
 import * as readline from 'readline';
 import { JamfAgent } from '../core/AgentCore.js';
 import { TaskPlan } from '../tasks/TaskPlanner.js';
+import { isReadOnlyMode } from '../../utils/read-only.js';
 
 export class AgentCLI {
   private agent: JamfAgent;
@@ -35,7 +36,7 @@ export class AgentCLI {
         safety: {
           mode: 'moderate',
           requireConfirmation: true,
-          readOnlyMode: process.env.JAMF_READ_ONLY === 'true',
+          readOnlyMode: isReadOnlyMode(),
           maxConcurrentTasks: 5,
           auditLogPath: './logs/agent-audit.log',
         },
@@ -52,7 +53,7 @@ export class AgentCLI {
           JAMF_URL: process.env.JAMF_URL || '',
           JAMF_CLIENT_ID: process.env.JAMF_CLIENT_ID || '',
           JAMF_CLIENT_SECRET: process.env.JAMF_CLIENT_SECRET || '',
-          JAMF_READ_ONLY: process.env.JAMF_READ_ONLY || 'false',
+          JAMF_READ_ONLY: String(isReadOnlyMode()),
         },
       },
     });

@@ -20,7 +20,7 @@ export const AgentConfigSchema = z.object({
   safety: z.object({
     mode: z.enum(['strict', 'moderate', 'permissive']).default('strict'),
     requireConfirmation: z.boolean().default(true),
-    readOnlyMode: z.boolean().default(false),
+    readOnlyMode: z.boolean().default(true),
     maxConcurrentTasks: z.number().default(5),
     auditLogPath: z.string().default('./logs/agent-audit.log'),
   }),

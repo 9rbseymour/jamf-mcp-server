@@ -81,7 +81,7 @@ export class JamfApiClientHybrid implements IJamfApiClient {
 
   constructor(config: JamfApiClientConfig) {
     this.config = config;
-    this.readOnlyMode = config.readOnlyMode ?? false;
+    this.readOnlyMode = config.readOnlyMode ?? true;
     
     // Check available auth methods
     this.hasOAuth2 = !!(config.clientId && config.clientSecret);

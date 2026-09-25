@@ -14,6 +14,7 @@ if (!process.env.MCP_MODE) {
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { JamfApiClientHybrid } from './jamf-client-hybrid.js';
+import { isReadOnlyMode } from './utils/read-only.js';
 import { registerCodeModeTools } from './code-mode/mcp-registration.js';
 import { registerResources } from './resources/index.js';
 import { registerPrompts } from './prompts/index.js';
@@ -31,7 +32,7 @@ const JAMF_CLIENT_ID = process.env.JAMF_CLIENT_ID;
 const JAMF_CLIENT_SECRET = process.env.JAMF_CLIENT_SECRET;
 const JAMF_USERNAME = process.env.JAMF_USERNAME;
 const JAMF_PASSWORD = process.env.JAMF_PASSWORD;
-const READ_ONLY_MODE = process.env.JAMF_READ_ONLY === 'true';
+const READ_ONLY_MODE = isReadOnlyMode();
 
 // Validate configuration
 if (!JAMF_URL) {

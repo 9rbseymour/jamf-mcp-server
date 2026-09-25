@@ -13,6 +13,7 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { JamfApiClientHybrid } from './jamf-client-hybrid.js';
+import { isReadOnlyMode } from './utils/read-only.js';
 import { registerTools } from './tools/index.js';
 import { registerResources } from './resources/index.js';
 import { registerPrompts } from './prompts/index.js';
@@ -23,7 +24,7 @@ import { registerSkillsAsMCPTools } from './tools/skills-mcp-integration.js';
 const JAMF_URL = process.env.JAMF_URL;
 const JAMF_CLIENT_ID = process.env.JAMF_CLIENT_ID;
 const JAMF_CLIENT_SECRET = process.env.JAMF_CLIENT_SECRET;
-const READ_ONLY_MODE = process.env.JAMF_READ_ONLY === 'true';
+const READ_ONLY_MODE = isReadOnlyMode();
 
 // Enhanced mode configuration
 const ENABLE_RETRY = process.env.JAMF_ENABLE_RETRY !== 'false';
