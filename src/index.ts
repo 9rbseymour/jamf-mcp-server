@@ -2,6 +2,7 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { JamfApiClientHybrid } from './jamf-client-hybrid.js';
+import { isReadOnlyMode } from './utils/read-only.js';
 import { registerTools } from './tools/index.js';
 import { registerResources } from './resources/index.js';
 import { registerPrompts } from './prompts/index.js';
@@ -10,7 +11,6 @@ import { registerSkillsAsMCPTools } from './tools/skills-mcp-integration.js';
 import { setupGlobalErrorHandlers } from './utils/error-handler.js';
 import { createLogger } from './server/logger.js';
 import { registerShutdownHandler, registerCommonHandlers } from './utils/shutdown-manager.js';
-import { cleanupAuthMiddleware } from './server/auth-middleware.js';
 import { cleanupAgentPool } from './utils/http-agent-pool.js';
 
 const logger = createLogger('main');
@@ -21,7 +21,7 @@ const JAMF_CLIENT_ID = process.env.JAMF_CLIENT_ID;
 const JAMF_CLIENT_SECRET = process.env.JAMF_CLIENT_SECRET;
 const JAMF_USERNAME = process.env.JAMF_USERNAME;
 const JAMF_PASSWORD = process.env.JAMF_PASSWORD;
-const READ_ONLY_MODE = process.env.JAMF_READ_ONLY === 'true';
+const READ_ONLY_MODE = isReadOnlyMode();
 
 // Validate configuration
 if (!JAMF_URL) {
@@ -139,7 +139,6 @@ setupGlobalErrorHandlers();
 registerCommonHandlers();
 
 // Register cleanup handlers
-registerShutdownHandler('auth-cleanup', cleanupAuthMiddleware, 20);
 registerShutdownHandler('agent-pool-cleanup', cleanupAgentPool, 20);
 registerShutdownHandler('server-transport-close', async () => {
   logger.info('Closing server transport...');

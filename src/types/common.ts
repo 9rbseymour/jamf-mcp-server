@@ -2,19 +2,6 @@
  * Common type definitions used across the application
  */
 
-import { Request as ExpressRequest } from 'express';
-
-// Extended Express Request with user info
-export interface AuthenticatedRequest extends ExpressRequest {
-  user?: {
-    sub: string;
-    permissions?: string[];
-    scope?: string;
-    [key: string]: unknown;
-  };
-  id?: string; // Request ID
-}
-
 // Tool execution types
 export interface ToolCallResponse {
   content: Array<{

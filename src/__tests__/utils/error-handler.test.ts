@@ -1,7 +1,6 @@
 import { describe, expect, test, jest, beforeEach } from '@jest/globals';
 import { 
   normalizeError, 
-  asyncHandler, 
   withTimeout,
   safeJsonParse,
   executeWithFallback
@@ -38,40 +37,6 @@ describe('Error Handler Utilities', () => {
       const result = normalizeError('String error');
       expect(result).toBeInstanceOf(JamfAPIError);
       expect(result.message).toBe('String error');
-    });
-  });
-
-  describe('asyncHandler', () => {
-    test('should handle successful async operations', async () => {
-      const handler = asyncHandler(async (req, res) => {
-        res.json({ success: true });
-      });
-
-      const req = { method: 'GET', path: '/test', ip: '127.0.0.1' } as any;
-      const res = { json: jest.fn() } as any;
-      const next = jest.fn();
-
-      await handler(req, res, next);
-
-      expect(res.json).toHaveBeenCalledWith({ success: true });
-      expect(next).not.toHaveBeenCalled();
-    });
-
-    test('should catch and forward errors', async () => {
-      const error = new Error('Test error');
-      const handler = asyncHandler(async () => {
-        throw error;
-      });
-
-      const req = { method: 'GET', path: '/test', ip: '127.0.0.1' } as any;
-      const res = {} as any;
-      const next = jest.fn();
-
-      await handler(req, res, next);
-
-      expect(next).toHaveBeenCalled();
-      const forwardedError = next.mock.calls[0][0];
-      expect(forwardedError).toBeInstanceOf(JamfAPIError);
     });
   });
 
